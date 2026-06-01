@@ -57,37 +57,47 @@ if user_input := st.chat_input("Ask about Karnataka Diploma admissions..."):
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
     
-    # Python Search: Find pages that share words with the user's query
+    # Improved Search: Matches keywords + structural phrases (e.g., Proforma, Validity)
     context_from_pdf = ""
     if pdf_pages:
-        query_words = set(user_input.lower().split())
+        query_text_lower = user_input.lower()
+        query_words = set(query_text_lower.split())
         matched_pages = []
         
         for page in pdf_pages:
-            # Count how many query words appear on this page
-            score = sum(1 for word in query_words if word in page["text"].lower())
+            page_text_lower = page["text"].lower()
+            score = 0
+            
+            # Scenario A: Exact phrase check (e.g., matching "proforma" or specific numbers)
+            if "proforma" in page_text_lower or "validity" in page_text_lower or "ಪ್ರೊಫಾರ್ಮ" in page_text_lower:
+                score += 5  # Give high priority to pages mentioning forms explicitly
+                
+            # Scenario B: Count individual overlapping words
+            word_score = sum(2 for word in query_words if word in page_text_lower)
+            score += word_score
+            
             if score > 0:
                 matched_pages.append((score, page["text"]))
         
-        # Sort by best match and pick top 2 pages
+        # Sort by highest score and merge top matching content blocks
         matched_pages.sort(key=lambda x: x[0], reverse=True)
-        top_matches = [text for score, text in matched_pages[:2]]
+        top_matches = [text for score, text in matched_pages[:3]] # Pull top 3 pages for broader context
         context_from_pdf = "\n\n--- Next Page ---\n\n".join(top_matches)
 
     # Dynamic Persona Instructions
     SYSTEM_INSTRUCTION = f"""
     You are "Namma Diploma Mitra," an expert AI assistant dedicated to guiding students through the Polytechnic/Diploma admission process in Karnataka.
     
-    Use the following verified background facts extracted from the official PDF documents to answer the user accurately:
+    Use the following background facts extracted from the official document to answer the user:
     ---
     {context_from_pdf}
     ---
     
     Core Policies:
-    - For 2026 Timelines / Last Date to Apply: Inform the user that applications typically open in mid-May and usually close around mid-to-late June 2026.
-    - If you cannot find the exact, absolute deadline date in the PDF text above, explicitly instruct the user to check the live "Notification and Circulars" tab on the official DTE portal: https://dtek.karnataka.gov.in.
+    - If the user asks about an eligibility certificate, proforma, or validity format, carefully check the context text block above to describe what is written on that page.
+    - If you locate the text matching the proforma guidelines, summarize what the student needs to fill out or submit based on the background text.
     - Always provide structured, bulleted answers.
-    - Keep your tone highly reassuring and helpful.
+    - Direct users to verify final layouts and print formats on the official portal: https://dtek.karnataka.gov.in.
     """
 
     # Generate Agent response
