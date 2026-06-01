@@ -53,7 +53,7 @@ if user_input := str.chat_input("Ask about Karnataka Diploma admissions..."):
         
         # Pull history into format Gemini expects
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-2.5-flash-8b',
             contents=user_input,
             config=config
         )
