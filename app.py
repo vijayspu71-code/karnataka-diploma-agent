@@ -50,61 +50,70 @@ if "messages" not in st.session_state:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-
 # 5. Capture User Input and Search
 if user_input := st.chat_input("Ask about Karnataka Diploma admissions..."):
     with st.chat_message("user"):
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
     
-    # Improved Search: Matches keywords + structural phrases (e.g., Proforma, Validity)
+    # Advanced Text Scanning
     context_from_pdf = ""
     if pdf_pages:
         query_text_lower = user_input.lower()
         query_words = set(query_text_lower.split())
         matched_pages = []
         
+        # Check if the user is typing a direct DTE Application ID
+        is_application_query = "dte" in query_text_lower
+        
         for page in pdf_pages:
             page_text_lower = page["text"].lower()
             score = 0
             
-            # Scenario A: Exact phrase check (e.g., matching "proforma" or specific numbers)
-            if "proforma" in page_text_lower or "validity" in page_text_lower or "ಪ್ರೊಫಾರ್ಮ" in page_text_lower:
-                score += 5  # Give high priority to pages mentioning forms explicitly
+            # CRITICAL MATCH: If searching for an ID, check if it exists on this page explicitly
+            if is_application_query:
+                # Extract words that look like application numbers (e.g., matching 'dte26')
+                for word in query_words:
+                    if len(word) > 5 and word in page_text_lower:
+                        score += 50  # Massive score boost to lock onto the correct list page
+            
+            # Standard structural keyword weight
+            if "merit" in page_text_lower or "rank" in page_text_lower:
+                score += 5
                 
-            # Scenario B: Count individual overlapping words
-            word_score = sum(2 for word in query_words if word in page_text_lower)
+            # Count standard word matches
+            word_score = sum(1 for word in query_words if word in page_text_lower)
             score += word_score
             
             if score > 0:
                 matched_pages.append((score, page["text"]))
         
-        # Sort by highest score and merge top matching content blocks
+        # Sort and pull the top matching pages
         matched_pages.sort(key=lambda x: x[0], reverse=True)
-        top_matches = [text for score, text in matched_pages[:3]] # Pull top 3 pages for broader context
+        top_matches = [text for score, text in matched_pages[:2]]
         context_from_pdf = "\n\n--- Next Page ---\n\n".join(top_matches)
 
     # Dynamic Persona Instructions
     SYSTEM_INSTRUCTION = f"""
     You are "Namma Diploma Mitra," an expert AI assistant dedicated to guiding students through the Polytechnic/Diploma admission process in Karnataka.
     
-    Use the following background facts extracted from the official document to answer the user:
+    Use the following verified data block extracted from the uploaded document to answer the query:
     ---
     {context_from_pdf}
     ---
     
     Core Policies:
-    - If the user asks about an eligibility certificate, proforma, or validity format, carefully check the context text block above to describe what is written on that page.
-    - If you locate the text matching the proforma guidelines, summarize what the student needs to fill out or submit based on the background text.
-    - Always provide structured, bulleted answers.
-    - Direct users to verify final layouts and print formats on the official portal: https://dtek.karnataka.gov.in.
+    - If the user provides an Application ID (like DTE26...), carefully look through the numbers and columns in the data block above.
+    - If you find a match, extract and show their corresponding Merit Number / Rank, Name, and category details clearly in a bulleted list.
+    - If you still cannot find that specific ID in the text above, politely explain that the matching page might be too dense, and guide them to manually check the official site: https://dtek.karnataka.gov.in.
+    - Always answer in a clear, well-structured manner.
     """
 
     # Generate Agent response
     with st.chat_message("assistant"):
         config = types.GenerateContentConfig(
             system_instruction=SYSTEM_INSTRUCTION,
-            temperature=0.3
+            temperature=0.1 # Lower temperature means less guessing, more data precision
         )
         try:
             response = client.models.generate_content(
@@ -115,4 +124,4 @@ if user_input := st.chat_input("Ask about Karnataka Diploma admissions..."):
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error("The server is temporarily busy. Please wait a moment and try again.")
+            st.error("The system is busy right now. Please try your message again.")
