@@ -18,31 +18,30 @@ if not api_key:
 # Initialize the Gemini Client
 client = genai.Client(api_key=api_key)
 
-# 3. High-Efficiency Text Extraction
+# 3. High-Efficiency Text Extraction for Multiple Files
 @st.cache_resource
-def load_pdf_context(pdf_path):
-    if not os.path.exists(pdf_path):
-        return ""
-    try:
-        reader = PdfReader(pdf_path)
-        full_text = ""
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                full_text += text + "\n\n"
-        return full_text.strip()
-    except Exception as e:
-        return ""
+def load_all_pdfs_context():
+    full_text = ""
+    # Scan every file inside your repository folder
+    for file in os.listdir("."):
+        if file.endswith(".pdf"):
+            try:
+                reader = PdfReader(file)
+                for page in reader.pages:
+                    text = page.extract_text()
+                    if text:
+                        full_text += f"\n\n--- Content from {file} ---\n\n" + text
+            except Exception as e:
+                continue # Skip corrupt files gracefully
+    return full_text.strip()
 
-# Read your uploaded PDF file
-pdf_filename = "admission_guide.pdf"
-document_context = load_pdf_context(pdf_filename)
+# Automatically bundle all uploaded PDFs into a single knowledge base
+document_context = load_all_pdfs_context()
 
 if document_context:
-    st.success("📚 Successfully loaded the document reference guide into memory!")
+    st.success("📚 Successfully loaded all document reference guides into memory!")
 else:
     st.info("👋 System ready! Operating using global engineering and DTE knowledge base.")
-
 # 4. Handle Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
