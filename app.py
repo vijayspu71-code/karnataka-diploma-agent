@@ -1,6 +1,5 @@
 import streamlit as st
 import os
-from pypdf import PdfReader
 from google import genai
 from google.genai import types
 
@@ -18,110 +17,59 @@ if not api_key:
 # Initialize the Gemini Client
 client = genai.Client(api_key=api_key)
 
-# 3. Lightweight RAG: Extract PDF Pages into Memory
+# 3. High-Capacity Document Loader (Handles Scanned PDFs up to 2GB)
 @st.cache_resource
-def load_pdf_text(pdf_path):
-    """Reads PDF and stores pages along with page numbers."""
+def upload_document_to_gemini(pdf_path):
     if not os.path.exists(pdf_path):
         return None
-        
-    reader = PdfReader(pdf_path)
-    pages_data = []
     
-    for i, page in enumerate(reader.pages):
-        text = page.extract_text()
-        if text and text.strip():
-            pages_data.append({"page_num": i + 1, "text": text})
-            
-    return pages_data if pages_data else None
+    # Upload directly to Google's API environment which handles OCR automatically
+    with open(pdf_path, "rb") as f:
+        uploaded_file = client.files.upload(file=pdf_path)
+    return uploaded_file
 
-# Load the uploaded PDF document
 pdf_filename = "admission_guide.pdf"
-pdf_pages = load_pdf_text(pdf_filename)
+gemini_file_context = upload_document_to_gemini(pdf_filename)
 
-if pdf_pages:
-    st.success(f"📚 Successfully loaded {len(pdf_pages)} pages from '{pdf_filename}'!")
+if gemini_file_context:
+    st.success("📚 Document attached directly to Gemini's vision engine!")
 
 # 4. Handle Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display previous messages
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-# 5. Capture User Input and Search
-if user_input := st.chat_input("Ask about Karnataka Diploma admissions..."):
+
+# 5. Send Prompt + Full PDF Context to Gemini
+if user_input := st.chat_input("Ask about your application ID or merit rank..."):
     with st.chat_message("user"):
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
     
-    # Advanced Text Scanning
-    context_from_pdf = ""
-    if pdf_pages:
-        query_text_lower = user_input.lower()
-        query_words = set(query_text_lower.split())
-        matched_pages = []
-        
-        # Check if the user is typing a direct DTE Application ID
-        is_application_query = "dte" in query_text_lower
-        
-        for page in pdf_pages:
-            page_text_lower = page["text"].lower()
-            score = 0
-            
-            # CRITICAL MATCH: If searching for an ID, check if it exists on this page explicitly
-            if is_application_query:
-                # Extract words that look like application numbers (e.g., matching 'dte26')
-                for word in query_words:
-                    if len(word) > 5 and word in page_text_lower:
-                        score += 50  # Massive score boost to lock onto the correct list page
-            
-            # Standard structural keyword weight
-            if "merit" in page_text_lower or "rank" in page_text_lower:
-                score += 5
-                
-            # Count standard word matches
-            word_score = sum(1 for word in query_words if word in page_text_lower)
-            score += word_score
-            
-            if score > 0:
-                matched_pages.append((score, page["text"]))
-        
-        # Sort and pull the top matching pages
-        matched_pages.sort(key=lambda x: x[0], reverse=True)
-        top_matches = [text for score, text in matched_pages[:2]]
-        context_from_pdf = "\n\n--- Next Page ---\n\n".join(top_matches)
-
-    # Dynamic Persona Instructions
-    SYSTEM_INSTRUCTION = f"""
-    You are "Namma Diploma Mitra," an expert AI assistant dedicated to guiding students through the Polytechnic/Diploma admission process in Karnataka.
+    SYSTEM_INSTRUCTION = """
+    You are "Namma Diploma Mitra," an expert AI assistant guiding students through the Polytechnic/Diploma admission process in Karnataka.
     
-    Use the following verified data block extracted from the uploaded document to answer the query:
-    ---
-    {context_from_pdf}
-    ---
-    
-    Core Policies:
-    - If the user provides an Application ID (like DTE26...), carefully look through the numbers and columns in the data block above.
-    - If you find a match, extract and show their corresponding Merit Number / Rank, Name, and category details clearly in a bulleted list.
-    - If you still cannot find that specific ID in the text above, politely explain that the matching page might be too dense, and guide them to manually check the official site: https://dtek.karnataka.gov.in.
-    - Always answer in a clear, well-structured manner.
+    You have been given the official admission/merit PDF document directly. 
+    - When a user asks about an Application ID (e.g., DTE262700000962), look through all image rows and data tables in the attached file to find that exact record.
+    - Extract and list their corresponding Merit Number, Rank, Name, and category details accurately.
+    - If you cannot find the record, request them to double-check their entry numbers.
+    - Always answer clearly using structured bullet points.
     """
 
-    # Generate Agent response
     with st.chat_message("assistant"):
-        config = types.GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTION,
-            temperature=0.1 # Lower temperature means less guessing, more data precision
-        )
         try:
+            # Pass both the uploaded file reference and the text query in contents
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=user_input,
-                config=config
+                contents=[gemini_file_context, user_input],
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0.1
+                )
             )
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error("The system is busy right now. Please try your message again.")
+            st.error("The system is busy processing the large document. Please wait a moment and try again.")
