@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+from pypdf import PdfReader
 from google import genai
 from google.genai import types
 
@@ -17,22 +18,29 @@ if not api_key:
 # Initialize the Gemini Client
 client = genai.Client(api_key=api_key)
 
-# 3. High-Capacity Document Loader (Handles Scanned PDFs up to 2GB)
+# 3. Fast Text Extraction for Small Files
 @st.cache_resource
-def upload_document_to_gemini(pdf_path):
+def load_small_pdf(pdf_path):
     if not os.path.exists(pdf_path):
-        return None
-    
-    # Upload directly to Google's API environment which handles OCR automatically
-    with open(pdf_path, "rb") as f:
-        uploaded_file = client.files.upload(file=pdf_path)
-    return uploaded_file
+        return ""
+    try:
+        reader = PdfReader(pdf_path)
+        full_text = ""
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                full_text += text + "\n\n"
+        return full_text.strip()
+    except Exception:
+        return ""
 
 pdf_filename = "admission_guide.pdf"
-gemini_file_context = upload_document_to_gemini(pdf_filename)
+document_context = load_small_pdf(pdf_filename)
 
-if gemini_file_context:
-    st.success("📚 Document attached directly to Gemini's vision engine!")
+if document_context:
+    st.success("📚 Successfully loaded the admission schedule guide into memory!")
+else:
+    st.info("👋 Ready to assist! (Note: Reading from general DTE knowledge base if document text isn't parsed)")
 
 # 4. Handle Chat History
 if "messages" not in st.session_state:
@@ -42,34 +50,39 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 5. Send Prompt + Full PDF Context to Gemini
-if user_input := st.chat_input("Ask about your application ID or merit rank..."):
+# 5. Capture User Input and Respond Instantly
+if user_input := st.chat_input("Ask about semester closing dates or application rules..."):
     with st.chat_message("user"):
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
     
-    SYSTEM_INSTRUCTION = """
-    You are "Namma Diploma Mitra," an expert AI assistant guiding students through the Polytechnic/Diploma admission process in Karnataka.
+    # Simple, clear instructions matching the text content directly
+    SYSTEM_INSTRUCTION = f"""
+    You are "Namma Diploma Mitra," an expert AI assistant guiding students through the Polytechnic/Diploma process in Karnataka.
     
-    You have been given the official admission/merit PDF document directly. 
-    - When a user asks about an Application ID (e.g., DTE262700000962), look through all image rows and data tables in the attached file to find that exact record.
-    - Extract and list their corresponding Merit Number, Rank, Name, and category details accurately.
-    - If you cannot find the record, request them to double-check their entry numbers.
-    - Always answer clearly using structured bullet points.
+    Use the following verified text block extracted from the user's uploaded guide to answer the query:
+    ---
+    {document_context}
+    ---
+    
+    Core Policies:
+    - Look carefully for semester dates, academic schedules, or closing dates inside the text block above.
+    - If the exact closing date for the 2nd semester is printed there, state it clearly.
+    - If the text block doesn't explicitly name the date, provide the expected window and direct them to verify live updates at https://dtek.karnataka.gov.in.
+    - Always answer in clean bullet points.
     """
 
     with st.chat_message("assistant"):
         try:
-            # Pass both the uploaded file reference and the text query in contents
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=[gemini_file_context, user_input],
+                contents=user_input,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_INSTRUCTION,
-                    temperature=0.1
+                    temperature=0.2
                 )
             )
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error("The system is busy processing the large document. Please wait a moment and try again.")
+            st.error("Something went wrong. Please try sending your message again.")
