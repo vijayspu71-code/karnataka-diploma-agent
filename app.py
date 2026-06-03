@@ -1,101 +1,100 @@
-import streamlit as st
 import os
-from pypdf import PdfReader
+import streamlit as st
 from google import genai
 from google.genai import types
 
-# 1. Page Configuration and Styling
-st.set_page_config(page_title="Namma Diploma Mitra", page_icon="🤖", layout="centered")
-st.title("🤖 Namma Diploma Mitra")
-st.caption("Your Multi-Purpose AI Academic & Admission Assistant")
-
-# 2. Securely get the API Key from Streamlit Secrets
-api_key = st.secrets.get("GEMINI_API_KEY")
-if not api_key:
-    st.warning("Please configure your GEMINI_API_KEY in the Streamlit secrets setting.")
+# 1. Initialize the Gemini Client
+# Make sure you have GEMINI_API_KEY set in your environment variables
+if "GEMINI_API_KEY" not in os.environ:
+    st.error("Please set the GEMINI_API_KEY environment variable.")
     st.stop()
 
-# Initialize the Gemini Client
-client = genai.Client(api_key=api_key)
+client = genai.Client()
 
-# 3. High-Efficiency Text Extraction for Multiple Files
+# 2. Define the documents to look for
+DOCUMENT_FILES = ["admission_guide.pdf", "merit_list.pdf"]
+
 @st.cache_resource
-def load_all_pdfs_context():
-    full_text = ""
-    # Scan every file inside your repository folder
-    for file in os.listdir("."):
-        if file.endswith(".pdf"):
+def upload_documents_to_gemini():
+    """Uploads both PDF files to the Gemini File API and returns their references."""
+    uploaded_refs = []
+    for file_name in DOCUMENT_FILES:
+        if os.path.exists(file_name):
+            st.info(f"Loading and processing {file_name}...")
             try:
-                reader = PdfReader(file)
-                for page in reader.pages:
-                    text = page.extract_text()
-                    if text:
-                        full_text += f"\n\n--- Content from {file} ---\n\n" + text
+                # Upload the file to Gemini File API
+                uploaded_file = client.files.upload(file=file_name)
+                uploaded_refs.append(uploaded_file)
             except Exception as e:
-                continue # Skip corrupt files gracefully
-    return full_text.strip()
+                st.error(f"Failed to upload {file_name}: {e}")
+        else:
+            st.warning(f"File not found: {file_name}. Please ensure it is in the repository.")
+    
+    if not uploaded_refs:
+        st.error("No documents were successfully loaded. The bot might lack context.")
+    else:
+        st.success(f"Successfully cached {len(uploaded_refs)} document(s) in Gemini context!")
+    
+    return uploaded_refs
 
-# Automatically bundle all uploaded PDFs into a single knowledge base
-document_context = load_all_pdfs_context()
+# Load/Upload files (Streamlit caches this so it doesn't re-upload on every click)
+uploaded_contexts = upload_documents_to_gemini()
 
-if document_context:
-    st.success("📚 Successfully loaded all document reference guides into memory!")
-else:
-    st.info("👋 System ready! Operating using global engineering and DTE knowledge base.")
-# 4. Handle Chat History
+# 3. Streamlit UI Setup
+st.title("📌 Karnataka Diploma Admission Assistant")
+st.write("Ask queries regarding diploma admissions, cut-offs, guidelines, and merit lists.")
+
+# Initialize chat history
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Hello! I have read the admission guide and merit list. How can I help you with your Karnataka Diploma admission process today?"}
+    ]
 
-# Render existing chat logs
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+# Display chat history
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-# 5. Capture User Input and Process Intelligently
-if user_input := st.chat_input("Ask about exam answers, dates, or application rules..."):
+# 4. Handle User Input
+if user_query := st.chat_input("Enter your question here (e.g., What is the cutoff for computer science?):"):
+    
+    # Display user message
     with st.chat_message("user"):
-        st.markdown(user_input)
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    
-    # Advanced System Instructions allowing dynamic behavioral routing
-    SYSTEM_INSTRUCTION = f"""
-    You are "Namma Diploma Mitra," an intelligent multi-purpose AI academic assistant for polytechnic and diploma students in Karnataka.
-    
-    You have access to a background reference document context block:
-    ---
-    {document_context}
-    ---
-    
-    Execute your responses based on these smart routing rules:
-    1. TECHNICAL & EXAM QUESTIONS: If the user asks engineering questions (e.g., about Microcontrollers, Assembly languages, LCDs, or Relays), deeply analyze the document context above. If the matching question or answer blueprint is there, format it beautifully with clean points and code blocks.
-    2. KNOWLEDGE EXPANSION: If the user asks a technical question that is only partially addressed or missing in the 2-page document (like expanding on missing diagrams or pin definitions), use your broader foundational engineering intelligence to provide a comprehensive, complete response. 
-    3. ADMISSION & SCHEDULE DETAILS: If asked about schedules, notifications, or ranks, check the text. If not found, provide guidance and direct them to check live updates at the official portal: https://dtek.karnataka.gov.in.
-    4. TONE: Always maintain a supportive, crisp, and educational presentation style using markdown bullet points.
-    """
+        st.markdown(user_query)
+    st.session_state.messages.append({"role": "user", "content": user_query})
 
+    # Generate response from Gemini
     with st.chat_message("assistant"):
+        response_placeholder = st.empty()
+        response_placeholder.markdown("Thinking...")
+        
         try:
-            # Primary structural request using system personas and context boundaries
+            # Injecting both documents directly into the contents list alongside the prompt
+            content_payload = []
+            content_payload.extend(uploaded_contexts)
+            content_payload.append(user_query)
+            
+            system_instruction = (
+                "You are an expert student counselor assisting with Karnataka Diploma Admissions. "
+                "Use the provided admission guide and merit list documents to give precise, helpful, "
+                "and accurate answers. If the information is not present in either document, state that politely."
+            )
+
+            # Request generation from Gemini 2.5 Flash (excellent for multimodal text/PDFs)
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=user_input,
+                model="gemini-2.5-flash",
+                contents=content_payload,
                 config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
-                    temperature=0.2
+                    system_instruction=system_instruction,
+                    temperature=0.3,
                 )
             )
-            st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
+            
+            ai_response = response.text
+            response_placeholder.markdown(ai_response)
+            st.session_state.messages.append({"role": "assistant", "content": ai_response})
             
         except Exception as e:
-            # Smart Fallback loop: If custom context parameters cause an API conflict, 
-            # bypass boundaries and answer using raw native AI engineering capability.
-            try:
-                fallback_response = client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=f"Answer this technical engineering/diploma question thoroughly: {user_input}"
-                )
-                st.markdown(fallback_response.text)
-                st.session_state.messages.append({"role": "assistant", "content": fallback_response.text})
-            except Exception as final_error:
-                st.error("Connection timed out. Please try sending your message again.")
+            error_msg = f"An error occurred while generating a response: {e}"
+            response_placeholder.markdown(error_msg)
+            st.session_state.messages.append({"role": "assistant", "content": error_msg})
