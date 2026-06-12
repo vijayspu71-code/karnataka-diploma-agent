@@ -57,6 +57,7 @@ def search_local_pdfs_for_keyword(keyword):
                 continue
                 
     return "\n\n--- Next Section ---\n\n".join(matched_chunks[:4])
+
 # 4. Handle Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -101,13 +102,7 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
     ---
     
     Instructions:
-    1. MERIT LIST DETAILS: Look closely at the data extracted above. If it contains the last page data, read the bottom-most rows to identify the final merit number listed in the collection.
-    2. GENERAL TOPICS: If the query is about generic concepts and no direct text matched above, use your deep native AI intelligence to provide an accurate, helpful answer anyway.
-    3. Always reply in clear markdown formatting.
-    """
-    
-    Instructions:
-    1. MERIT LIST DETAILS: Look closely at the data extracted above. Find the rows corresponding to the user's requested merit number or name. Extract the student name, registration numbers, category, and marks obtained.
+    1. MERIT LIST DETAILS: Look closely at the data extracted above. Find the rows corresponding to the user's requested merit number or name. Extract the student name, registration numbers, category, and marks obtained. If it contains the last page data, read the bottom-most rows to identify the final merit number listed in the collection.
     2. GENERAL TOPICS: If the query is about generic concepts (like Arduino or microcontrollers) and no direct text matched above, use your deep native AI intelligence to provide an accurate, helpful answer anyway.
     3. Always reply in clear markdown formatting.
     """
@@ -126,4 +121,3 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
             st.error("Something went wrong. Please try sending your message again.")
-            
