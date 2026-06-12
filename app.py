@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import time
 from pypdf import PdfReader
 from google import genai
 from google.genai import types
@@ -18,15 +19,15 @@ if not api_key:
 # Initialize the Gemini Client
 client = genai.Client(api_key=api_key)
 
-# 3. Dynamic Local PDF Scanner (Unlocks the main thread instantly)
+# 3. Dynamic Local PDF Scanner (Scans intelligently across the entire document)
 def search_local_pdfs_for_keyword(keyword):
-    """Scans local PDFs on-the-fly for specific keywords to ensure zero thread locking."""
+    """Scans local PDFs intelligently for specific exact keywords without a sequential cutoff."""
     if not keyword:
         return ""
     
     matched_chunks = []
-    search_terms = [word.lower().strip() for word in keyword.split() if len(word) > 3]
-    
+    # Clean and isolate search terms
+    search_terms = [word.lower().strip() for word in keyword.split() if len(word) > 1]
     if not search_terms:
         return ""
 
@@ -38,15 +39,33 @@ def search_local_pdfs_for_keyword(keyword):
                     text = page.extract_text()
                     if text:
                         text_lower = text.lower()
-                        # If the page matches any search term, grab it instantly
-                        if any(term in text_lower for term in search_terms):
+                        
+                        # Match logic: Verify if the specific numbers/names exist on this page
+                        if all(term in text_lower for term in search_terms):
                             matched_chunks.append(f"\n[Source: {file} | Page: {page_num+1}]\n{text.strip()}")
-                            # Safety cap: don't overload the context
-                            if len(matched_chunks) >= 5:
-                                return "\n\n--- Next Section ---\n\n".join(matched_chunks)
+                        
+                        # Break safely only if we accumulate 3 perfect multi-term pages
+                        if len(matched_chunks) >= 3:
+                            return "\n\n--- Next Section ---\n\n".join(matched_chunks)
             except Exception:
                 continue
-    return "\n\n--- Next Section ---\n\n".join(matched_chunks)
+                
+    # Fallback to loose matching if no strict page contained all terms simultaneously
+    if not matched_chunks:
+        for file in os.listdir("."):
+            if file.endswith(".pdf"):
+                try:
+                    reader = PdfReader(file)
+                    for page_num, page in enumerate(reader.pages):
+                        text = page.extract_text()
+                        if text and any(term in text.lower() for term in search_terms):
+                            matched_chunks.append(f"\n[Source: {file} | Page: {page_num+1}]\n{text.strip()}")
+                            if len(matched_chunks) >= 3:
+                                break
+                except Exception:
+                    continue
+                    
+    return "\n\n--- Next Section ---\n\n".join(matched_chunks[:4])
 
 # 4. Handle Chat History
 if "messages" not in st.session_state:
@@ -56,18 +75,13 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Import time at the top of your file
-import time
-
-# ... (rest of your configuration and functions)
-
 # 5. Non-Blocking Input Capture
 if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or dates..."):
     with st.chat_message("user"):
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
     
-    # Give the browser UI a split second to reset and keep the input text box unlocked
+    # Give the browser UI a split second to clear its state and keep the input box unlocked
     time.sleep(0.1)
     
     # Process scanning dynamically ONLY when a message is sent
@@ -83,8 +97,8 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
     ---
     
     Instructions:
-    1. MERIT LISTS: If a student's rank/merit details (like Madhura) are found above, present their Merit Number, ID, Category, and score in clean bullet points.
-    2. GENERAL TOPICS: If the query is about generic concepts (like Arduino, engineering, or schedules) and no direct text matched above, use your deep native AI intelligence to provide an accurate, helpful answer anyway.
+    1. MERIT LIST DETAILS: Look closely at the data extracted above. Find the rows corresponding to the user's requested merit number or name. Extract the student name, registration numbers, category, and marks obtained.
+    2. GENERAL TOPICS: If the query is about generic concepts (like Arduino or microcontrollers) and no direct text matched above, use your deep native AI intelligence to provide an accurate, helpful answer anyway.
     3. Always reply in clear markdown formatting.
     """
 
@@ -102,3 +116,4 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
             st.error("Something went wrong. Please try sending your message again.")
+            
