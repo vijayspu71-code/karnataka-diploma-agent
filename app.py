@@ -19,17 +19,15 @@ if not api_key:
 # Initialize the Gemini Client
 client = genai.Client(api_key=api_key)
 
-# 3. Dynamic Local PDF Scanner (Intelligent Key Term Filtering)
+# 3. Dynamic Local PDF Scanner (Intelligent Precise Word Boundary Filtering)
 def search_local_pdfs_for_keyword(keyword):
-    """Scans local PDFs intelligently by filtering out common filler words."""
+    """Scans local PDFs intelligently by matching exact standalone terms to prevent false early matches."""
     if not keyword:
         return ""
     
     matched_chunks = []
-    # Words to ignore so they don't break the 'all()' matching logic
-    filler_words = {"what", "is", "the", "of", "name", "merit", "number", "marks", "obtained", "by", "find", "who"}
+    filler_words = {"what", "is", "the", "of", "name", "merit", "number", "marks", "obtained", "by", "find", "who", "list"}
     
-    # Isolate only the important terms (like "100" or specific student names)
     search_terms = [
         word.lower().strip() for word in keyword.split() 
         if len(word) > 1 and word.lower().strip() not in filler_words
@@ -47,17 +45,18 @@ def search_local_pdfs_for_keyword(keyword):
                     if text:
                         text_lower = text.lower()
                         
-                        # Match logic: Ensure the actual specific number or name exists on this page
-                        if all(term in text_lower for term in search_terms):
+                        # Break page into distinct words to verify strict standalone matching
+                        words_in_text = text_lower.split()
+                        if all(any(term == word.strip(",.-_()[]:;") for word in words_in_text) for term in search_terms):
                             matched_chunks.append(f"\n[Source: {file} | Page: {page_num+1}]\n{text.strip()}")
                         
-                        # Break safely once we have 3 highly targeted matching pages
+                        # Accumulate up to 3 highly targeted pages before passing to the model
                         if len(matched_chunks) >= 3:
-                            return "\n\n--- Next Section ---\n\n" .join(matched_chunks)
+                            return "\n\n--- Next Section ---\n\n".join(matched_chunks)
             except Exception:
                 continue
                 
-    return "\n\n--- Next Section ---\n\n" .join(matched_chunks[:4])
+    return "\n\n--- Next Section ---\n\n".join(matched_chunks[:4])
 # 4. Handle Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
