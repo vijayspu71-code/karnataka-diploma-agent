@@ -18,31 +18,35 @@ if not api_key:
 # Initialize the Gemini Client
 client = genai.Client(api_key=api_key)
 
-# 3. Smart Local Text Extractor (Bypasses File Upload Bottlenecks)
-@st.cache_resource
-def load_all_local_pdfs():
-    combined_text = ""
+# 3. Dynamic Local PDF Scanner (Unlocks the main thread instantly)
+def search_local_pdfs_for_keyword(keyword):
+    """Scans local PDFs on-the-fly for specific keywords to ensure zero thread locking."""
+    if not keyword:
+        return ""
+    
+    matched_chunks = []
+    search_terms = [word.lower().strip() for word in keyword.split() if len(word) > 3]
+    
+    if not search_terms:
+        return ""
+
     for file in os.listdir("."):
         if file.endswith(".pdf"):
             try:
                 reader = PdfReader(file)
-                # If it's the giant merit list, extract text cleanly
                 for page_num, page in enumerate(reader.pages):
                     text = page.extract_text()
                     if text:
-                        # Add structural markers so Gemini knows where it is looking
-                        combined_text += f"\n[File: {file} | Page: {page_num+1}]\n" + text
+                        text_lower = text.lower()
+                        # If the page matches any search term, grab it instantly
+                        if any(term in text_lower for term in search_terms):
+                            matched_chunks.append(f"\n[Source: {file} | Page: {page_num+1}]\n{text.strip()}")
+                            # Safety cap: don't overload the context
+                            if len(matched_chunks) >= 5:
+                                return "\n\n--- Next Section ---\n\n".join(matched_chunks)
             except Exception:
                 continue
-    return combined_text
-
-with st.spinner("Reading your local PDF files into memory... Please wait."):
-    all_document_text = load_all_local_pdfs()
-
-if all_document_text:
-    st.success("📚 Successfully loaded all document data into the local knowledge base!")
-else:
-    st.info("👋 System ready! Operating using general engineering knowledge base.")
+    return "\n\n--- Next Section ---\n\n".join(matched_chunks)
 
 # 4. Handle Chat History
 if "messages" not in st.session_state:
@@ -52,49 +56,28 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 5. Capture User Input & Narrow Down the Search Context
+# 5. Non-Blocking Input Capture
 if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or dates..."):
     with st.chat_message("user"):
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
     
-    # Intelligent Search: If looking for a specific student name or ID, 
-    # extract only the pages from the giant text that contain that keyword!
-    relevant_context = ""
-    query_keyword = user_input.lower().strip()
-    
-    # Try to find specific name keywords (e.g., "madhura" or a DTE ID)
-    search_terms = [word for word in query_keyword.split() if len(word) > 3]
-    
-    if all_document_text and search_terms:
-        # Split data by our page markers
-        pages_data = all_document_text.split("[File:")
-        matched_chunks = []
-        
-        for chunk in pages_data:
-            chunk_lower = chunk.strip().lower()
-            if chunk_lower and any(term in chunk_lower for term in search_terms):
-                matched_chunks.append("[File:" + chunk)
-        
-        # Merge only the matching pages to keep token count extremely small and fast
-        relevant_context = "\n\n--- Relevant Page ---\n\n".join(matched_chunks[:5])
-    
-    # Fallback to a safe snippet if no explicit name match is found
-    if not relevant_context and all_document_text:
-        relevant_context = all_document_text[:20000] # Safe text chunk limit
+    # Process scanning dynamically ONLY when a message is sent
+    with st.spinner("Searching documents..."):
+        relevant_context = search_local_pdfs_for_keyword(user_input)
 
     SYSTEM_INSTRUCTION = f"""
     You are "Namma Diploma Mitra," an intelligent multi-purpose AI academic assistant for polytechnic and diploma students in Karnataka.
     
-    Here is the filtered, highly relevant data extracted from the uploaded files (including merit lists and guides):
+    Here is the live, relevant data extracted from the files matching the query:
     ---
-    {relevant_context}
+    {relevant_context if relevant_context else "No direct document text matched this specific query."}
     ---
     
-    Execute your responses based on these rules:
-    1. MERIT LIST & STUDENT QUERIES: If the user asks about a student's rank or merit number (like Madhura), carefully scan the rows in the text block above. Locate the name, extract her Merit Number, Application ID, Category, and score details, and print them clearly.
-    2. COGNITIVE FALLBACK: If the student name is missing from the specific text blocks above, use your intelligence to politely ask the user to provide their application ID or exact spelling to help locate them.
-    3. PRESENTATION: Always format answers with structured, clean markdown bullet points.
+    Instructions:
+    1. MERIT LISTS: If a student's rank/merit details (like Madhura) are found above, present their Merit Number, ID, Category, and score in clean bullet points.
+    2. GENERAL TOPICS: If the query is about generic concepts (like Arduino, engineering, or schedules) and no direct text matched above, use your deep native AI intelligence to provide an accurate, helpful answer anyway.
+    3. Always reply in clear markdown formatting.
     """
 
     with st.chat_message("assistant"):
@@ -109,7 +92,5 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
             )
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
-            
         except Exception as e:
             st.error("Something went wrong. Please try sending your message again.")
-           
