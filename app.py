@@ -56,11 +56,19 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
+# Import time at the top of your file
+import time
+
+# ... (rest of your configuration and functions)
+
 # 5. Non-Blocking Input Capture
 if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or dates..."):
     with st.chat_message("user"):
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
+    
+    # Give the browser UI a split second to reset and keep the input text box unlocked
+    time.sleep(0.1)
     
     # Process scanning dynamically ONLY when a message is sent
     with st.spinner("Searching documents..."):
