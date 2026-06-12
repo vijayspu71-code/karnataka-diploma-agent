@@ -19,15 +19,22 @@ if not api_key:
 # Initialize the Gemini Client
 client = genai.Client(api_key=api_key)
 
-# 3. Dynamic Local PDF Scanner (Scans intelligently across the entire document)
+# 3. Dynamic Local PDF Scanner (Intelligent Key Term Filtering)
 def search_local_pdfs_for_keyword(keyword):
-    """Scans local PDFs intelligently for specific exact keywords without a sequential cutoff."""
+    """Scans local PDFs intelligently by filtering out common filler words."""
     if not keyword:
         return ""
     
     matched_chunks = []
-    # Clean and isolate search terms
-    search_terms = [word.lower().strip() for word in keyword.split() if len(word) > 1]
+    # Words to ignore so they don't break the 'all()' matching logic
+    filler_words = {"what", "is", "the", "of", "name", "merit", "number", "marks", "obtained", "by", "find", "who"}
+    
+    # Isolate only the important terms (like "100" or specific student names)
+    search_terms = [
+        word.lower().strip() for word in keyword.split() 
+        if len(word) > 1 and word.lower().strip() not in filler_words
+    ]
+    
     if not search_terms:
         return ""
 
@@ -40,33 +47,17 @@ def search_local_pdfs_for_keyword(keyword):
                     if text:
                         text_lower = text.lower()
                         
-                        # Match logic: Verify if the specific numbers/names exist on this page
+                        # Match logic: Ensure the actual specific number or name exists on this page
                         if all(term in text_lower for term in search_terms):
                             matched_chunks.append(f"\n[Source: {file} | Page: {page_num+1}]\n{text.strip()}")
                         
-                        # Break safely only if we accumulate 3 perfect multi-term pages
+                        # Break safely once we have 3 highly targeted matching pages
                         if len(matched_chunks) >= 3:
-                            return "\n\n--- Next Section ---\n\n".join(matched_chunks)
+                            return "\n\n--- Next Section ---\n\n" .join(matched_chunks)
             except Exception:
                 continue
                 
-    # Fallback to loose matching if no strict page contained all terms simultaneously
-    if not matched_chunks:
-        for file in os.listdir("."):
-            if file.endswith(".pdf"):
-                try:
-                    reader = PdfReader(file)
-                    for page_num, page in enumerate(reader.pages):
-                        text = page.extract_text()
-                        if text and any(term in text.lower() for term in search_terms):
-                            matched_chunks.append(f"\n[Source: {file} | Page: {page_num+1}]\n{text.strip()}")
-                            if len(matched_chunks) >= 3:
-                                break
-                except Exception:
-                    continue
-                    
-    return "\n\n--- Next Section ---\n\n".join(matched_chunks[:4])
-
+    return "\n\n--- Next Section ---\n\n" .join(matched_chunks[:4])
 # 4. Handle Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
