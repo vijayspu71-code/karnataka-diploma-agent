@@ -72,9 +72,8 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
         matched_chunks = []
         
         for chunk in pages_data:
-            chunk_lower = chunk.lower()
-            # If the page mentions the student's name, isolate this page context!
-            if any(term in chunk_lower for term in search_terms):
+            chunk_lower = chunk.strip().lower()
+            if chunk_lower and any(term in chunk_lower for term in search_terms):
                 matched_chunks.append("[File:" + chunk)
         
         # Merge only the matching pages to keep token count extremely small and fast
