@@ -77,6 +77,20 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
     # Process scanning dynamically ONLY when a message is sent
     with st.spinner("Searching documents..."):
         relevant_context = search_local_pdfs_for_keyword(user_input)
+        
+        # STRUCTURAL FALLBACK: If looking for boundaries like "last", "total", or "end" 
+        # and search came up empty, pull the very last page of the PDF into the context!
+        if not relevant_context and any(term in user_input.lower() for term in ["last", "end", "total", "highest", "lowest"]):
+            for file in os.listdir("."):
+                if file.endswith(".pdf") and "merit" in file.lower():
+                    try:
+                        reader = PdfReader(file)
+                        last_page_idx = len(reader.pages) - 1
+                        last_page_text = reader.pages[last_page_idx].extract_text()
+                        if last_page_text:
+                            relevant_context = f"[Source: {file} | Page: {last_page_idx + 1} (LAST PAGE)]\n{last_page_text.strip()}"
+                    except Exception:
+                        pass
 
     SYSTEM_INSTRUCTION = f"""
     You are "Namma Diploma Mitra," an intelligent multi-purpose AI academic assistant for polytechnic and diploma students in Karnataka.
@@ -85,6 +99,12 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
     ---
     {relevant_context if relevant_context else "No direct document text matched this specific query."}
     ---
+    
+    Instructions:
+    1. MERIT LIST DETAILS: Look closely at the data extracted above. If it contains the last page data, read the bottom-most rows to identify the final merit number listed in the collection.
+    2. GENERAL TOPICS: If the query is about generic concepts and no direct text matched above, use your deep native AI intelligence to provide an accurate, helpful answer anyway.
+    3. Always reply in clear markdown formatting.
+    """
     
     Instructions:
     1. MERIT LIST DETAILS: Look closely at the data extracted above. Find the rows corresponding to the user's requested merit number or name. Extract the student name, registration numbers, category, and marks obtained.
