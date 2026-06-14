@@ -60,20 +60,26 @@ def search_local_pdfs_for_keyword(keyword):
 
 # 4. Handle Chat History
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.session_state_messages = []
+if "messages" in st.session_state:
+    st.session_state.session_state_messages = st.session_state.messages
 
-for msg in st.session_state.messages:
+if "session_state_messages" not in st.session_state:
+    st.session_state.session_state_messages = []
+
+for msg in st.session_state.session_state_messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 5. # Text Box Input underneath as an alternative option
-typed_input = st.chat_input("Or type your question about merits, exam answers, or dates here...")
+# 5. Non-Blocking Input Capture
+user_input = st.chat_input("Ask about merits, exam answers, or dates here...")
 
 # 6. Process Input through Search Index & Gemini Core
 if user_input:
     with st.chat_message("user"):
         st.markdown(user_input)
-    st.session_state.messages.append({"role": "user", "content": user_input})
+    st.session_state.session_state_messages.append({"role": "user", "content": user_input})
+    st.session_state.messages = st.session_state.session_state_messages
     
     # Give the browser UI a split second to clear its state and keep inputs unlocked
     time.sleep(0.1)
@@ -120,7 +126,8 @@ if user_input:
                 )
             )
             st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
+            st.session_state.session_state_messages.append({"role": "assistant", "content": response.text})
+            st.session_state.messages = st.session_state.session_state_messages
         except Exception as e:
             st.error("Something went wrong. Please try sending your message again.")
             
