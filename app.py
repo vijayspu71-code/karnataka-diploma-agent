@@ -90,19 +90,24 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
                     except Exception:
                         pass
 
-    # Clean context assignment
-    context_str = str(relevant_context).strip() if relevant_context else "No direct document text matched this specific query."
+    # Clean up empty context into explicit descriptions to satisfy model configurations
+    if not relevant_context or str(relevant_context).strip() == "":
+        context_str = "No specific local document matches found for this query. Use your internal knowledge base to reply."
+    else:
+        context_str = str(relevant_context).strip()
 
     # Dynamic Instructions injected into the LLM logic
-    SYSTEM_INSTRUCTION = f"""You are "Namma Diploma Mitra," an intelligent multi-purpose AI academic assistant for polytechnic and diploma students in Karnataka.
-Here is the live, relevant data extracted from the files matching the query:
+    SYSTEM_INSTRUCTION = f"""You are "Namma Diploma Mitra," an assistant for polytechnic students in Karnataka.
+
+Here is the data context extracted from files matching the query:
 ---
 {context_str}
 ---
+
 Instructions:
-1. MERIT LIST DETAILS: Look closely at the data extracted above. Find the rows corresponding to the user's requested merit number or name. Extract the student name, registration numbers, category, and marks obtained. If it contains the last page data, read the bottom-most rows to identify the final merit number listed in the collection.
-2. GENERAL TOPICS: If the query is about generic concepts (like Arduino or microcontrollers) and no direct text matched above, use your deep native AI intelligence to provide an accurate, helpful answer anyway.
-3. Always reply in clear markdown formatting."""
+1. MERIT LIST DETAILS: If the context above contains specific student information, extract names, registration numbers, categories, or marks accurately.
+2. GENERAL KNOWLEDGE: If the query is about an academic topic (e.g., "what is hydrogen fuel cell", "explain Arduino") and no local documents matched, answer the student fully using your native foundational knowledge. Do not mention that files were missing unless it was an explicit file search request.
+3. Keep answers clear, supportive, and formatted in clean markdown."""
 
     with st.chat_message("assistant"):
         try:
@@ -122,16 +127,14 @@ Instructions:
                     )
                 )
 
-            # Request generation with explicit config validation
-            config = types.GenerateContentConfig(
-                system_instruction=str(SYSTEM_INSTRUCTION),
-                temperature=0.1
-            )
-
+            # Request generation using clear, un-nested configuration blocks
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=formatted_contents,
-                config=config
+                config=types.GenerateContentConfig(
+                    system_instruction=str(SYSTEM_INSTRUCTION),
+                    temperature=0.2
+                )
             )
             
             # Print response to the app container and append to the session history log
