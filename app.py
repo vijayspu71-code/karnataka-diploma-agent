@@ -123,26 +123,32 @@ Instructions:
 
     with st.chat_message("assistant"):
         try:
-            # Map conversation history safely for the new google-genai SDK format
-            formatted_contents = []
+            # Compactor Engine: Ensure strict alternating turn structure (User -> Model -> User -> Model)
+            compacted_history = []
             for msg in st.session_state.messages:
-                # CRITICAL SAFETY: Skip empty messages or old error blocks to prevent payload crashing
-                if not msg.get("content") or "Something went wrong" in msg["content"]:
+                content_text = str(msg.get("content", "")).strip()
+                # Skip system errors or empty fields completely
+                if not content_text or "Something went wrong" in content_text:
                     continue
-                    
-                # API requires "model" instead of "assistant"
+                
                 api_role = "model" if msg["role"] == "assistant" else "user"
-                formatted_contents.append(
-                    types.Content(
-                        role=api_role,
-                        parts=[types.Part.from_text(text=str(msg["content"]))]
+                
+                # If consecutive entries have the exact same role, append text together instead of crashing
+                if compacted_history and compacted_history[-1].role == api_role:
+                    old_text = compacted_history[-1].parts[0].text
+                    compacted_history[-1].parts = [types.Part.from_text(text=f"{old_text}\n{content_text}")]
+                else:
+                    compacted_history.append(
+                        types.Content(
+                            role=api_role,
+                            parts=[types.Part.from_text(text=content_text)]
+                        )
                     )
-                )
 
             # Request generation using clear, un-nested configuration blocks
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=formatted_contents,
+                contents=compacted_history,
                 config=types.GenerateContentConfig(
                     system_instruction=str(SYSTEM_INSTRUCTION),
                     temperature=0.2
