@@ -58,8 +58,9 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    if msg.get("content"):  # Render only valid messages
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
 # 5. Chat Input Capture
 if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or dates..."):
@@ -104,9 +105,13 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
 
     with st.chat_message("assistant"):
         try:
-            # Map conversation history correctly for the new google-genai SDK format
+            # Map conversation history safely for the new google-genai SDK format
             formatted_contents = []
             for msg in st.session_state.messages:
+                # CRITICAL SAFETY: Skip empty messages or old error blocks to prevent payload crashing
+                if not msg.get("content") or "Something went wrong" in msg["content"]:
+                    continue
+                    
                 # API requires "model" instead of "assistant"
                 api_role = "model" if msg["role"] == "assistant" else "user"
                 formatted_contents.append(
@@ -127,8 +132,11 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
             )
             
             # Print response to the app container and append to the session history log
-            st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
+            if response.text:
+                st.markdown(response.text)
+                st.session_state.messages.append({"role": "assistant", "content": response.text})
+            else:
+                st.error("Received an empty response from the model. Please try again.")
             
         except Exception as e:
             # Send the real traceback error to your background terminal logs for easier tracking
