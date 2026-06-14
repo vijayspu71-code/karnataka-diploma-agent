@@ -4,6 +4,8 @@ import time
 from pypdf import PdfReader
 from google import genai
 from google.genai import types
+# Import the speech recorder component
+from streamlit_mic_recorder import speech_to_text
 
 # 1. Page Configuration and Styling
 st.set_page_config(page_title="Namma Diploma Mitra", page_icon="🤖", layout="centered")
@@ -66,21 +68,43 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 5. Non-Blocking Input Capture
-if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or dates..."):
+# 5. Dual Input Capture System (Voice + Text Typing)
+st.write("---")
+st.subheader("🎤 Ask with your Voice")
+
+# Render a simple mic recorder layout button that supports English transcription natively
+voice_transcript = speech_to_text(
+    start_prompt="Click to start speaking 🎙️",
+    stop_prompt="Stop recording 🛑",
+    language='en',
+    use_container_width=True,
+    key='speech'
+)
+
+# Text Box Input underneath as an alternative option
+typed_input = st.chat_input("Or type your question about merits, exam answers, or dates here...")
+
+# Consolidate input: prioritize voice transcript if captured, otherwise use typed input
+user_input = None
+if voice_transcript:
+    user_input = voice_transcript
+elif typed_input:
+    user_input = typed_input
+
+# 6. Process Input through Search Index & Gemini Core
+if user_input:
     with st.chat_message("user"):
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
     
-    # Give the browser UI a split second to clear its state and keep the input box unlocked
+    # Give the browser UI a split second to clear its state and keep inputs unlocked
     time.sleep(0.1)
     
-    # Process scanning dynamically ONLY when a message is sent
+    # Process scanning dynamically ONLY when a message is triggered
     with st.spinner("Searching documents..."):
         relevant_context = search_local_pdfs_for_keyword(user_input)
         
-        # STRUCTURAL FALLBACK: If looking for boundaries like "last", "total", or "end" 
-        # and search came up empty, pull the very last page of the PDF into the context!
+        # STRUCTURAL FALLBACK: Look for boundaries like "last", "total", or "end"
         if not relevant_context and any(term in user_input.lower() for term in ["last", "end", "total", "highest", "lowest"]):
             for file in os.listdir("."):
                 if file.endswith(".pdf") and "merit" in file.lower():
@@ -121,3 +145,6 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
             st.error("Something went wrong. Please try sending your message again.")
+            
+    # Force a page rerun to refresh the historical chat visual logs cleanly
+    st.rerun()
