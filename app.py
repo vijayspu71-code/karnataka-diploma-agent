@@ -7,7 +7,16 @@ from google.genai import types
 # Import the speech recorder component
 from streamlit_mic_recorder import speech_to_text
 
-# 1. Page Configuration and Styling
+# 1. Check if voice input has data
+if "voice_text" in st.session_state and st.session_state.voice_text:
+    # Use the text as the query
+    user_query = st.session_state.voice_text
+    
+    # IMPORTANT: Clear it immediately so it doesn't loop on the next rerun
+    st.session_state.voice_text = "" 
+    
+    # Run your document search function here
+    # run_search(user_query)Page Configuration and Styling
 st.set_page_config(page_title="Namma Diploma Mitra", page_icon="🤖", layout="centered")
 st.title("🤖 Namma Diploma Mitra")
 st.caption("Your Multi-Purpose AI Academic & Admission Assistant")
