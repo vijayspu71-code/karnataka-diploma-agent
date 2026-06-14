@@ -90,18 +90,19 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
                     except Exception:
                         pass
 
+    # Clean context assignment
+    context_str = str(relevant_context).strip() if relevant_context else "No direct document text matched this specific query."
+
     # Dynamic Instructions injected into the LLM logic
-    SYSTEM_INSTRUCTION = f"""
-    You are "Namma Diploma Mitra," an intelligent multi-purpose AI academic assistant for polytechnic and diploma students in Karnataka.
-    Here is the live, relevant data extracted from the files matching the query:
-    ---
-    {relevant_context if relevant_context else "No direct document text matched this specific query."}
-    ---
-    Instructions:
-    1. MERIT LIST DETAILS: Look closely at the data extracted above. Find the rows corresponding to the user's requested merit number or name. Extract the student name, registration numbers, category, and marks obtained. If it contains the last page data, read the bottom-most rows to identify the final merit number listed in the collection.
-    2. GENERAL TOPICS: If the query is about generic concepts (like Arduino or microcontrollers) and no direct text matched above, use your deep native AI intelligence to provide an accurate, helpful answer anyway.
-    3. Always reply in clear markdown formatting.
-    """
+    SYSTEM_INSTRUCTION = f"""You are "Namma Diploma Mitra," an intelligent multi-purpose AI academic assistant for polytechnic and diploma students in Karnataka.
+Here is the live, relevant data extracted from the files matching the query:
+---
+{context_str}
+---
+Instructions:
+1. MERIT LIST DETAILS: Look closely at the data extracted above. Find the rows corresponding to the user's requested merit number or name. Extract the student name, registration numbers, category, and marks obtained. If it contains the last page data, read the bottom-most rows to identify the final merit number listed in the collection.
+2. GENERAL TOPICS: If the query is about generic concepts (like Arduino or microcontrollers) and no direct text matched above, use your deep native AI intelligence to provide an accurate, helpful answer anyway.
+3. Always reply in clear markdown formatting."""
 
     with st.chat_message("assistant"):
         try:
@@ -117,18 +118,20 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
                 formatted_contents.append(
                     types.Content(
                         role=api_role,
-                        parts=[types.Part.from_text(text=msg["content"])]
+                        parts=[types.Part.from_text(text=str(msg["content"]))]
                     )
                 )
 
-            # Request generation with the properly structured payload bundle
+            # Request generation with explicit config validation
+            config = types.GenerateContentConfig(
+                system_instruction=str(SYSTEM_INSTRUCTION),
+                temperature=0.1
+            )
+
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=formatted_contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
-                    temperature=0.1
-                )
+                config=config
             )
             
             # Print response to the app container and append to the session history log
