@@ -19,14 +19,14 @@ if not api_key:
 # Initialize the Gemini Client
 client = genai.Client(api_key=api_key)
 
-# 3. Dynamic Local PDF Scanner (Intelligent Precise Word Boundary Filtering)
+# 3. Dynamic Local PDF Scanner (Optimized Ranking Search)
 def search_local_pdfs_for_keyword(keyword):
-    """Scans local PDFs intelligently by matching exact standalone terms to prevent false early matches."""
+    """Scans local PDFs and ranks pages by how many key terms they match."""
     if not keyword:
         return ""
         
-    matched_chunks = []
-    filler_words = {"what", "is", "the", "of", "name", "merit", "number", "marks", "obtained", "by", "find", "who", "list"}
+    matched_pages = []
+    filler_words = {"what", "is", "the", "of", "name", "merit", "number", "marks", "obtained", "by", "find", "who", "list", "for", "to"}
     search_terms = [word.lower().strip() for word in keyword.split() if len(word) > 1 and word.lower().strip() not in filler_words]
     
     if not search_terms:
@@ -40,18 +40,30 @@ def search_local_pdfs_for_keyword(keyword):
                     text = page.extract_text()
                     if text:
                         text_lower = text.lower()
-                        # Break page into distinct words to verify strict standalone matching
                         words_in_text = text_lower.split()
-                        if all(any(term == word.strip(",.-_()[]:;") for word in words_in_text) for term in search_terms):
-                            matched_chunks.append(f"\n[Source: {file} | Page: {page_num+1}]\n{text.strip()}")
-                            
-                # Accumulate up to 3 highly targeted pages before passing to the model
-                if len(matched_chunks) >= 3:
-                    return "\n\n--- Next Section ---\n\n".join(matched_chunks)
+                        cleaned_words = [word.strip(",.-_()[]:;") for word in words_in_text]
+                        
+                        # Count how many of our search terms appear on this page
+                        match_count = sum(1 for term in search_terms if term in cleaned_words)
+                        
+                        # If it matches at least one meaningful keyword, consider it
+                        if match_count > 0:
+                            matched_pages.append({
+                                "score": match_count,
+                                "content": f"\n[Source: {file} | Page: {page_num+1}]\n{text.strip()}"
+                            })
             except Exception:
                 continue
                 
-    return "\n\n--- Next Section ---\n\n".join(matched_chunks[:4])
+    if not matched_pages:
+        return ""
+        
+    # Sort pages so the ones matching the MOST keywords come first
+    matched_pages.sort(key=lambda x: x["score"], reverse=True)
+    
+    # Take the top 3 most relevant pages
+    top_chunks = [page["content"] for page in matched_pages[:3]]
+    return "\n\n--- Next Section ---\n\n".join(top_chunks)
 
 # 4. Handle and Display Chat History
 if "messages" not in st.session_state:
@@ -105,8 +117,8 @@ Here is the data context extracted from files matching the query:
 ---
 
 Instructions:
-1. MERIT LIST DETAILS: If the context above contains specific student information, extract names, registration numbers, categories, or marks accurately.
-2. GENERAL KNOWLEDGE: If the query is about an academic topic (e.g., "what is hydrogen fuel cell", "explain Arduino") and no local documents matched, answer the student fully using your native foundational knowledge. Do not mention that files were missing unless it was an explicit file search request.
+1. DOCUMENT SOURCE PRIORITY: If the context above contains matching texts from local files regarding rules, regulations, attendance, or merit lists, synthesize your answers strictly using that data first. Always state the source file and page numbers if you used them.
+2. GENERAL KNOWLEDGE: If the query is about a general academic topic or no matching local rules are found, answer cleanly using your native foundational knowledge.
 3. Keep answers clear, supportive, and formatted in clean markdown."""
 
     with st.chat_message("assistant"):
