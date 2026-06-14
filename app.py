@@ -9,7 +9,10 @@ from google.genai import types
 st.set_page_config(page_title="Namma Diploma Mitra", page_icon="🤖", layout="centered")
 st.title("🤖 Namma Diploma Mitra")
 st.caption("Your Multi-Purpose AI Academic & Admission Assistant")
-
+# Insert this right below st.caption(...) around Line 12
+if st.sidebar.button("🗑️ Clear Chat History"):
+    st.session_state.messages = []
+    st.rerun()
 # 2. Securely get the API Key from Streamlit Secrets
 api_key = st.secrets.get("GEMINI_API_KEY")
 if not api_key:
