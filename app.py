@@ -9,10 +9,12 @@ from google.genai import types
 st.set_page_config(page_title="Namma Diploma Mitra", page_icon="🤖", layout="centered")
 st.title("🤖 Namma Diploma Mitra")
 st.caption("Your Multi-Purpose AI Academic & Admission Assistant")
-# Insert this right below st.caption(...) around Line 12
+
+# Sidebar reset to clear corrupt states manually if needed
 if st.sidebar.button("🗑️ Clear Chat History"):
     st.session_state.messages = []
     st.rerun()
+
 # 2. Securely get the API Key from Streamlit Secrets
 api_key = st.secrets.get("GEMINI_API_KEY")
 if not api_key:
@@ -42,6 +44,8 @@ def search_local_pdfs_for_keyword(keyword):
                 for page_num, page in enumerate(reader.pages):
                     text = page.extract_text()
                     if text:
+                        # Sanitize extracted text immediately to remove hidden corrupt characters
+                        text = text.encode("utf-8", errors="ignore").decode("utf-8")
                         text_lower = text.lower()
                         words_in_text = text_lower.split()
                         cleaned_words = [word.strip(",.-_()[]:;") for word in words_in_text]
@@ -79,6 +83,9 @@ for msg in st.session_state.messages:
 
 # 5. Chat Input Capture
 if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or dates..."):
+    # Clean input strings safely
+    user_input = user_input.encode("utf-8", errors="ignore").decode("utf-8")
+    
     # Immediately render the user's message on the screen
     with st.chat_message("user"):
         st.markdown(user_input)
@@ -101,6 +108,7 @@ if user_input := st.chat_input("Ask about Madhura's merit, exam answers, or date
                         last_page_idx = len(reader.pages) - 1
                         last_page_text = reader.pages[last_page_idx].extract_text()
                         if last_page_text:
+                            last_page_text = last_page_text.encode("utf-8", errors="ignore").decode("utf-8")
                             relevant_context = f"[Source: {file} | Page: {last_page_idx + 1} (LAST PAGE)]\n{last_page_text.strip()}"
                     except Exception:
                         pass
